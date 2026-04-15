@@ -170,6 +170,3 @@ Where the backend can be swapped between DirectX 11 and Vulkan with minimal chan
 
 ---
 
-## License
-
-MIT
