@@ -1,16 +1,22 @@
 #include "VukRenderAPI.h"
 #include <print>
+#define GLFW_EXPOSE_NATIVE_WAYLAND
+#include <GLFW/glfw3native.h>
 
 namespace MRe {
 
-VukRenderAPI::VukRenderAPI() {
+VukRenderAPI::VukRenderAPI(GLFWwindow* window) : p_Window(window) {
     CreateInstance();
     SetupDebugMessenger();
     CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
+    CreateSyncObjects();
     CreateSwapChain();
     CreateImageViews();
+    
+    CreateCommandPoolAndBuffer();
+
 }
 
 auto VukRenderAPI::GetRequiredExtensions() -> std::vector<const char*> {
@@ -239,6 +245,8 @@ auto VukRenderAPI::CreateLogicalDevice() -> void {
 
     m_Device = vk::raii::Device(m_PhysicalDevice, deviceCreateInfo);
     m_GraphicsQueue = vk::raii::Queue(m_Device, graphicsIndex, 0);
+
+    m_GraphicsQueueIndex = graphicsIndex;
 }
 
 auto VukRenderAPI::CreateSurface() -> void {
@@ -284,20 +292,18 @@ auto VukRenderAPI::CreateSwapChain() -> void {
         presentMode = *_presentMode;
     }
 
-
-
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-        m_SwapchainExtent = capabilities.currentExtent;
+        m_Swapchain.m_Extent = capabilities.currentExtent;
     }
-
-    int w, h;
-    glfwGetFramebufferSize(p_Window, &w, &h);
-
-    m_SwapchainExtent = {
-        std::clamp(uint32_t(w), capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
-        std::clamp(uint32_t(h), capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
-    };
-
+    else {
+        int w, h;
+        glfwGetFramebufferSize(p_Window, &w, &h);
+    
+        m_Swapchain.m_Extent = {
+            std::clamp(uint32_t(w), capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+            std::clamp(uint32_t(h), capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
+        };
+    }
     uint32_t imageCount = capabilities.minImageCount + 1;
 
     if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount) {
@@ -309,7 +315,7 @@ auto VukRenderAPI::CreateSwapChain() -> void {
         .minImageCount = imageCount,
         .imageFormat = m_SwapchainSurfaceFormat.format,
         .imageColorSpace = m_SwapchainSurfaceFormat.colorSpace,
-        .imageExtent = m_SwapchainExtent,
+        .imageExtent = m_Swapchain.m_Extent,
         .imageArrayLayers = 1,
         .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
         .imageSharingMode = vk::SharingMode::eExclusive,
@@ -319,8 +325,9 @@ auto VukRenderAPI::CreateSwapChain() -> void {
         .clipped = VK_TRUE,
     };
 
-    m_Swapchain = vk::raii::SwapchainKHR(m_Device, swapchainInfo);
-    m_SwapchainImages = m_Swapchain.getImages();
+    m_Swapchain.GetHandleMut() = vk::raii::SwapchainKHR(m_Device, swapchainInfo);
+    m_Swapchain.GetImagesMut() = m_Swapchain.m_Swapchain.getImages();
+    m_Swapchain.SetDeps(&m_GraphicsQueue, &m_SyncData);
 }
 
 auto VukRenderAPI::CreateImageViews() -> void {
@@ -342,14 +349,40 @@ auto VukRenderAPI::CreateImageViews() -> void {
         vk::ComponentSwizzle::eIdentity,
     };
 
-    for (auto& image : m_SwapchainImages) {
+    for (auto& image : m_Swapchain.m_Images) {
         imageViewCreateInfo.image = image;
-        m_SwapchainImageViews.emplace_back(m_Device, imageViewCreateInfo);
+        m_Swapchain.GetImageViewsMut().emplace_back(m_Device, imageViewCreateInfo);
     }
 }
 
+auto VukRenderAPI::CreateCommandPoolAndBuffer() -> void {
+    vk::CommandPoolCreateInfo createInfo {
+        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        .queueFamilyIndex = m_GraphicsQueueIndex
+    };
 
+    m_CommandPool = vk::raii::CommandPool(m_Device, createInfo);
 
+    vk::CommandBufferAllocateInfo cmdBuffInfo {
+        .commandPool = m_CommandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+
+    m_CommandBuffer = std::move(vk::raii::CommandBuffers(m_Device, cmdBuffInfo).front());
+
+}
+
+auto VukRenderAPI::CreateSyncObjects() -> void {
+    vk::SemaphoreCreateInfo createInfo {};
+
+    m_SyncData.ImageAvailable = vk::raii::Semaphore(m_Device, createInfo);
+    m_SyncData.RenderFinished = vk::raii::Semaphore(m_Device, createInfo);
+}
+
+auto VukRenderAPI::GetSwapchain() -> ISwapchain& {
+    return m_Swapchain;
+}
 
 }
 

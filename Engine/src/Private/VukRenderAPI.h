@@ -2,7 +2,8 @@
 #include "Public/IRenderAPI.h"
 
 #include <vulkan/vulkan_raii.hpp>
-#include <GLFW/glfw3.h>
+
+#include "VukSwapchain.h"
 
 namespace MRe {
 
@@ -15,17 +16,21 @@ constexpr bool g_Debug = false;
 
 class VukRenderAPI : public IRenderAPI {
 public:
-    VukRenderAPI();
+    VukRenderAPI(GLFWwindow* window);
     ~VukRenderAPI() = default;
 
+    auto GetSwapchain() -> ISwapchain& override;
+    
 private:
     auto CreateInstance()               -> void;
     auto SetupDebugMessenger()          -> void;
     auto PickPhysicalDevice()           -> void;
     auto CreateLogicalDevice()          -> void;
+    auto CreateSyncObjects()            -> void;
     auto CreateSurface()                -> void;
     auto CreateSwapChain()              -> void;
     auto CreateImageViews()             -> void;
+    auto CreateCommandPoolAndBuffer()   -> void;
 
     auto GetRequiredExtensions()        -> std::vector<const char*>;
     auto GetRequiredLayers()            -> std::vector<const char*>;
@@ -48,12 +53,16 @@ private:
     vk::raii::Device                    m_Device            { nullptr };
     vk::raii::Queue                     m_GraphicsQueue     { nullptr };
     vk::raii::SurfaceKHR                m_Surface           { nullptr };
-    vk::raii::SwapchainKHR              m_Swapchain         { nullptr };
-    
+
     vk::SurfaceFormatKHR                m_SwapchainSurfaceFormat;
-    vk::Extent2D                        m_SwapchainExtent;
-    std::vector<vk::Image>              m_SwapchainImages;
-    std::vector<vk::raii::ImageView>    m_SwapchainImageViews;
+    VukSwapchain                        m_Swapchain;
+
+    vk::raii::CommandPool               m_CommandPool       { nullptr };
+    vk::raii::CommandBuffer             m_CommandBuffer     { nullptr };
+    
+    VukSyncData                         m_SyncData;
+
+    u32 m_GraphicsQueueIndex { std::numeric_limits<u32>::max() };
 
 //Pointer/Reference
 private:
