@@ -20,6 +20,13 @@ int main() {
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        auto idx = swapchain.GetNextImage();
+
+        rhi->RenderFrameTemp(idx);
+
+        swapchain.Present(idx);
+
     }
 
     glfwDestroyWindow(window);

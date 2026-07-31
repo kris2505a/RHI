@@ -327,7 +327,7 @@ auto VukRenderAPI::CreateSwapChain() -> void {
 
     m_Swapchain.GetHandleMut() = vk::raii::SwapchainKHR(m_Device, swapchainInfo);
     m_Swapchain.GetImagesMut() = m_Swapchain.m_Swapchain.getImages();
-    m_Swapchain.SetDeps(&m_GraphicsQueue, &m_SyncData);
+    m_Swapchain.SetDeps(&m_GraphicsQueue, &m_SyncData, &m_Device);
 }
 
 auto VukRenderAPI::CreateImageViews() -> void {
@@ -369,7 +369,7 @@ auto VukRenderAPI::CreateCommandPoolAndBuffer() -> void {
         .commandBufferCount = 1
     };
 
-    m_CommandBuffer = std::move(vk::raii::CommandBuffers(m_Device, cmdBuffInfo).front());
+    m_Cmd = std::move(vk::raii::CommandBuffers(m_Device, cmdBuffInfo).front());
 
 }
 
@@ -378,11 +378,129 @@ auto VukRenderAPI::CreateSyncObjects() -> void {
 
     m_SyncData.ImageAvailable = vk::raii::Semaphore(m_Device, createInfo);
     m_SyncData.RenderFinished = vk::raii::Semaphore(m_Device, createInfo);
+    m_SyncData.InFlight = vk::raii::Fence(m_Device, { .flags = vk::FenceCreateFlagBits::eSignaled});
 }
 
 auto VukRenderAPI::GetSwapchain() -> ISwapchain& {
     return m_Swapchain;
 }
+
+
+
+auto VukRenderAPI::RenderFrameTemp(u32 idx) -> void {
+
+    m_Device.waitForFences(
+        *m_SyncData.InFlight,
+        VK_TRUE,
+        UINT64_MAX
+    );
+
+    m_Device.resetFences(
+        *m_SyncData.InFlight
+    );
+    
+    m_Cmd.reset();
+    m_Cmd.begin({
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    });
+
+    vk::ImageMemoryBarrier2 barrier {
+        .srcStageMask = vk::PipelineStageFlagBits2::eNone,
+        .srcAccessMask = {},
+        .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .image = m_Swapchain.GetImagesMut().at(idx),
+        .subresourceRange = {
+            vk::ImageAspectFlagBits::eColor,
+            0, 1,
+            0, 1
+        }
+    };
+
+    m_Cmd.pipelineBarrier2({
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &barrier
+    });
+
+
+    vk::RenderingAttachmentInfo colorAttachment {
+        .imageView = *m_Swapchain.GetImageViewsMut().at(idx),
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = vk::ClearColorValue (
+            std::array<float, 4> {
+                0.0f, 1.0f, 1.0f, 1.0f
+            }
+        )
+    };
+
+    vk::RenderingInfo renderiingInfo {
+        .renderArea = {
+            { 0, 0},
+            m_Swapchain.m_Extent
+        },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachment
+    };
+
+    m_Cmd.beginRendering(renderiingInfo);
+
+    m_Cmd.endRendering();
+
+    vk::ImageMemoryBarrier2 presentBarrier {
+        .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
+        .dstStageMask = vk::PipelineStageFlagBits2::eNone,
+        .dstAccessMask = {},
+        .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .newLayout = vk::ImageLayout::ePresentSrcKHR,
+        .image = m_Swapchain.GetImagesMut().at(idx),
+        .subresourceRange = {
+            vk::ImageAspectFlagBits::eColor,
+            0, 1,
+            0, 1
+        }
+    };
+
+    m_Cmd.pipelineBarrier2({
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &presentBarrier
+    });
+
+    m_Cmd.end();
+    
+    vk::CommandBufferSubmitInfo cmdInfo {
+        .commandBuffer = *m_Cmd
+    };
+
+    vk::SemaphoreSubmitInfo waitInfo {
+        .semaphore = *m_SyncData.ImageAvailable,
+        .stageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput
+    };
+
+    vk::SemaphoreSubmitInfo signalInfo {
+        .semaphore = *m_SyncData.RenderFinished,
+        .stageMask = vk::PipelineStageFlagBits2::eAllGraphics
+    };
+
+    vk::SubmitInfo2 submitInfo {
+        .waitSemaphoreInfoCount = 1,
+        .pWaitSemaphoreInfos = &waitInfo,
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &cmdInfo,
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos = &signalInfo
+    };
+
+    m_GraphicsQueue.submit2(submitInfo, *m_SyncData.InFlight);
+
+}
+
+
 
 }
 

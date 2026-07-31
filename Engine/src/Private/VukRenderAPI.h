@@ -20,6 +20,7 @@ public:
     ~VukRenderAPI() = default;
 
     auto GetSwapchain() -> ISwapchain& override;
+    auto RenderFrameTemp(u32 idx) -> void override;
     
 private:
     auto CreateInstance()               -> void;
@@ -58,7 +59,7 @@ private:
     VukSwapchain                        m_Swapchain;
 
     vk::raii::CommandPool               m_CommandPool       { nullptr };
-    vk::raii::CommandBuffer             m_CommandBuffer     { nullptr };
+    vk::raii::CommandBuffer             m_Cmd     { nullptr };
     
     VukSyncData                         m_SyncData;
 

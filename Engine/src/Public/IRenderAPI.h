@@ -14,7 +14,8 @@ public:
     IRenderAPI() = default;
     virtual ~IRenderAPI() = default;
     static auto Create(GLFWwindow* window) -> Scope<IRenderAPI>;
-    
+
+    virtual auto RenderFrameTemp(u32 idx) -> void = 0;
     virtual auto GetSwapchain() -> ISwapchain& = 0;
     
 };

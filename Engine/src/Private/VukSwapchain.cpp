@@ -17,13 +17,27 @@ auto VukSwapchain::GetImageViewsMut() -> std::vector<vk::raii::ImageView>& {
 }
 
 auto VukSwapchain::GetNextImage() -> u32 {
-    //WILL BE MOVED TO DEVICE. NO USE HERE. FUCK OFF 
-    return 0;
+    
+    vk::AcquireNextImageInfoKHR acquireInfo {
+        .swapchain = *m_Swapchain,
+        .timeout = std::numeric_limits<u64>::max(),
+        .semaphore = p_SyncData->ImageAvailable,
+        .deviceMask = 1
+    };
+
+    auto result = p_Device->acquireNextImage2KHR(acquireInfo);
+    
+    if (!result.has_value()) {
+        throw std::runtime_error("failed to acquire image");
+    }
+
+    return result.has_value();
 }
 
-auto VukSwapchain::SetDeps(vk::raii::Queue* pPresentQueue, VukSyncData* pSyncData) -> void {
+auto VukSwapchain::SetDeps(vk::raii::Queue* pPresentQueue, VukSyncData* pSyncData, vk::raii::Device* pDevice) -> void {
     p_PresentQueue = pPresentQueue;
     p_SyncData = pSyncData;
+    p_Device = pDevice;
 }
 
 

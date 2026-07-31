@@ -20,7 +20,7 @@ private:
     auto GetHandleMut() -> vk::raii::SwapchainKHR&;
     auto GetImagesMut() -> std::vector<vk::Image>&;
     auto GetImageViewsMut() -> std::vector<vk::raii::ImageView>&;
-    auto SetDeps(vk::raii::Queue* pQueue, VukSyncData* pSyncData) -> void;
+    auto SetDeps(vk::raii::Queue* pQueue, VukSyncData* pSyncData, vk::raii::Device* pDevice) -> void;
 
 private:
     vk::raii::SwapchainKHR              m_Swapchain { nullptr };
@@ -30,6 +30,7 @@ private:
 
     vk::raii::Queue*                    p_PresentQueue;
     VukSyncData*                        p_SyncData;
+    vk::raii::Device*                   p_Device;
 };
 
 }
